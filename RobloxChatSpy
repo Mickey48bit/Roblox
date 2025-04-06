@@ -173,12 +173,12 @@ textLabel.Parent = screenGui
 textLabel.Text = "Spychat Beta"
 textLabel.Size = UDim2.new(0.1, 0, 0.02, 0)  -- Tamanho bem reduzido
 textLabel.Position = UDim2.new(0.45, 0, 0, 0)  -- Fica bem no topo, de forma discreta
-textLabel.BackgroundColor3 = Color3.fromRGB(0, 255, 0)  -- Fundo verde
-textLabel.BackgroundTransparency = 0.7  -- 30% de transparência no fundo (70% opaco)
+textLabel.BackgroundTransparency = 1  -- Remove o fundo
 textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Cor do texto (branco)
 textLabel.TextTransparency = 0.7  -- 30% de transparência no texto (70% opaco)
 textLabel.TextScaled = true  -- Ajusta automaticamente o texto ao tamanho do label
 textLabel.Font = Enum.Font.SourceSansBold
 textLabel.TextStrokeTransparency = 0.8  -- Contorno suave no texto
 textLabel.ZIndex = 100  -- Garante que o texto fique por cima de outros elementos
+
 
