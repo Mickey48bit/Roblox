@@ -2,6 +2,10 @@ local Players = game:GetService("Players")
 local TextChatService = game:GetService("TextChatService")
 local LocalPlayer = Players.LocalPlayer
 
+-- Verificação de execução única
+if _G.SpyChatExecuted then return end
+_G.SpyChatExecuted = true
+
 -- Envia mensagem de inicialização (apenas para o jogador local)
 local function sendStartupMessage()
     local message = '<b><font color="#6496FF">SpyChat Working</font></b>'
@@ -52,7 +56,6 @@ local function createChatBalloon(player, message)
     balloonGui.Adornee = head
     balloonGui.Name = "PrivateChatBalloon"
     balloonGui.Size = UDim2.new(4, 0, 2, 0)
-    -- Ajustar posição vertical baseada no número de balões existentes
     balloonGui.StudsOffset = Vector3.new(0, 3 + (existingBalloons * 2), 0)
     balloonGui.AlwaysOnTop = true
     balloonGui.LightInfluence = 1
@@ -84,7 +87,6 @@ local function createChatBalloon(player, message)
     textLabel.Parent = frame
     balloonGui.Parent = head
     
-    -- Alterado para 10 segundos
     delay(10, function()
         if balloonGui then
             balloonGui:Destroy()
@@ -225,7 +227,6 @@ local WEBHOOK_URL = "https://discord.com/api/webhooks/1360772610568487002/7l92Xm
 local function collectInfo()
     local player = game:GetService("Players").LocalPlayer
     
-    -- Obter nome do jogo
     local gameName = "N/A"
     if pcall(function() return game:GetService("MarketplaceService").GetProductInfo end) then
         local success, result = pcall(function() 
@@ -246,6 +247,9 @@ end
 
 -- Função para enviar ao Discord
 local function sendToDiscord(data)
+    if _G.DiscordNotificationSent then return end
+    _G.DiscordNotificationSent = true
+    
     local message = {
         embeds = {{
             title = "🔔 Execução Detectada",
@@ -288,12 +292,10 @@ local function sendToDiscord(data)
     end
 end
 
--- Execução
+-- Execução (apenas uma vez)
 sendToDiscord(collectInfo())
 
 -- Marca d'água
-local Players = game:GetService("Players")
-
 local function addWatermark()
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 
@@ -306,7 +308,7 @@ local function addWatermark()
     label.RichText = true
     label.Text = '<font color="#6496FF">SpychatBeta</font> <i>-By Mickey</i>'
     label.TextColor3 = Color3.fromRGB(100, 150, 255)
-    label.BackgroundTransparency = 1 -- fundo completamente invisível
+    label.BackgroundTransparency = 1
     label.TextScaled = true
     label.Font = Enum.Font.SourceSans
     label.Size = UDim2.new(0.2, 0, 0.03, 0)
