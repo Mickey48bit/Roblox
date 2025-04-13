@@ -1,0 +1,323 @@
+local Players = game:GetService("Players")
+local TextChatService = game:GetService("TextChatService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Envia mensagem de inicialização (apenas para o jogador local)
+local function sendStartupMessage()
+    local message = '<b><font color="#6496FF">SpyChat Working</font></b>'
+    
+    if TextChatService then
+        local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if channel then
+            channel:DisplaySystemMessage(message)
+        else
+            game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+                Text = "SpyChat Working",
+                Color = Color3.fromRGB(100, 150, 255),
+                Font = Enum.Font.SourceSansBold
+            })
+        end
+    else
+        game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+            Text = "SpyChat Working",
+            Color = Color3.fromRGB(100, 150, 255),
+            Font = Enum.Font.SourceSansBold
+        })
+    end
+end
+
+sendStartupMessage()
+
+-- Tabelas para armazenar mensagens
+local serverMessages = {}
+local clientMessages = {}
+local lastCleanup = os.time()
+
+-- Função para criar balão de chat acima do jogador
+local function createChatBalloon(player, message)
+    if not player or not player.Character then return end
+    
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return end
+    
+    -- Contar balões existentes para posicionar o novo
+    local existingBalloons = 0
+    for _, child in ipairs(head:GetChildren()) do
+        if child:IsA("BillboardGui") and child.Name == "PrivateChatBalloon" then
+            existingBalloons = existingBalloons + 1
+        end
+    end
+    
+    local balloonGui = Instance.new("BillboardGui")
+    balloonGui.Adornee = head
+    balloonGui.Name = "PrivateChatBalloon"
+    balloonGui.Size = UDim2.new(4, 0, 2, 0)
+    -- Ajustar posição vertical baseada no número de balões existentes
+    balloonGui.StudsOffset = Vector3.new(0, 3 + (existingBalloons * 2), 0)
+    balloonGui.AlwaysOnTop = true
+    balloonGui.LightInfluence = 1
+    balloonGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    local frame = Instance.new("Frame")
+    frame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    frame.BackgroundTransparency = 0.3
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.Position = UDim2.new(0, 0, 0, 0)
+    frame.BorderSizePixel = 0
+    frame.ZIndex = 1
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.2, 0)
+    corner.Parent = frame
+    
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Text = message
+    textLabel.TextColor3 = Color3.fromRGB(100, 150, 255)
+    textLabel.TextScaled = true
+    textLabel.Font = Enum.Font.SourceSansBold
+    textLabel.BackgroundTransparency = 1
+    textLabel.Size = UDim2.new(0.9, 0, 0.8, 0)
+    textLabel.Position = UDim2.new(0.05, 0, 0.1, 0)
+    textLabel.ZIndex = 2
+    
+    frame.Parent = balloonGui
+    textLabel.Parent = frame
+    balloonGui.Parent = head
+    
+    -- Alterado para 10 segundos
+    delay(10, function()
+        if balloonGui then
+            balloonGui:Destroy()
+        end
+    end)
+end
+
+-- Função para enviar mensagem privada no chat
+local function sendPrivateChatMessage(username, displayName, message)
+    local formattedMessage = string.format(
+        '<b><font color="#6496FF">🔒 %s (@%s): %s</font></b>',
+        displayName,
+        username,
+        message
+    )
+    
+    if TextChatService then
+        local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if channel then
+            channel:DisplaySystemMessage(formattedMessage)
+        else
+            game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+                Text = "🔒 " .. displayName .. " (@" .. username .. "): " .. message,
+                Color = Color3.fromRGB(100, 150, 255),
+                Font = Enum.Font.SourceSansBold
+            })
+        end
+    else
+        game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+            Text = "🔒 " .. displayName .. " (@" .. username .. "): " .. message,
+            Color = Color3.fromRGB(100, 150, 255),
+            Font = Enum.Font.SourceSansBold
+        })
+    end
+end
+
+local function decideMessageType(username, displayName, message)
+    task.delay(1.0, function()
+        local key = username .. ":" .. message
+        local isPublic = (clientMessages[key] and clientMessages[key].value == true)
+        
+        if not isPublic then
+            local foundInClient = false
+            for k, v in pairs(clientMessages) do
+                if k:find(message, 1, true) and v.value == true then
+                    foundInClient = true
+                    break
+                end
+            end
+            
+            if not foundInClient then
+                sendPrivateChatMessage(username, displayName, message)
+                
+                local player = Players:FindFirstChild(username)
+                if player then
+                    createChatBalloon(player, message)
+                end
+            end
+        end
+    end)
+end
+
+local function handleServerMessage(player, message)
+    local key = player.Name .. ":" .. message
+    serverMessages[key] = {
+        value = true,
+        timestamp = os.time()
+    }
+    decideMessageType(player.Name, player.DisplayName, message)
+end
+
+local function handleClientMessage(username, displayName, message)
+    if os.time() - lastCleanup > 30 then
+        for k, v in pairs(clientMessages) do
+            if os.time() - (v.timestamp or 0) > 30 then
+                clientMessages[k] = nil
+            end
+        end
+        lastCleanup = os.time()
+    end
+    
+    local key = username .. ":" .. message
+    clientMessages[key] = {
+        value = true,
+        timestamp = os.time()
+    }
+end
+
+-- Conexão de mensagens do servidor
+for _, player in ipairs(Players:GetPlayers()) do
+    player.Chatted:Connect(function(message)
+        handleServerMessage(player, message)
+    end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(message)
+        handleServerMessage(player, message)
+    end)
+end)
+
+-- Processamento de mensagens do cliente
+local function processClientMessage(message)
+    local text = message.Text
+    local username = "Unknown"
+    local displayName = "Unknown"
+
+    if message.TextSource then
+        local player = Players:GetPlayerByUserId(message.TextSource.UserId)
+        if player then
+            username = player.Name
+            displayName = player.DisplayName
+        elseif message.TextSource.Name then
+            username = message.TextSource.Name
+            displayName = message.TextSource.Name
+        end
+    end
+
+    handleClientMessage(username, displayName, text)
+end
+
+-- Inicialização do sistema de chat
+if TextChatService then
+    local chatWindow = TextChatService.TextChannels.RBXGeneral
+    if chatWindow then
+        chatWindow.MessageReceived:Connect(processClientMessage)
+    end
+else
+    LocalPlayer.Chatted:Connect(function(message)
+        handleClientMessage(LocalPlayer.Name, LocalPlayer.DisplayName, message)
+    end)
+end
+
+local Players = game:GetService("Players")
+
+local function addWatermark()
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+
+    local watermarkGui = Instance.new("ScreenGui")
+    watermarkGui.Name = "SpyChatWatermark"
+    watermarkGui.ResetOnSpawn = false
+    watermarkGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    local label = Instance.new("TextLabel")
+    label.RichText = true
+    label.Text = '<font color="#6496FF">SpychatBeta</font> <i>-By Mickey</i>'
+    label.TextColor3 = Color3.fromRGB(100, 150, 255)
+    label.BackgroundTransparency = 1 -- fundo completamente invisível
+    label.TextScaled = true
+    label.Font = Enum.Font.SourceSans
+    label.Size = UDim2.new(0.2, 0, 0.03, 0)
+    label.Position = UDim2.new(0.01, 0, 0.95, 0)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Bottom
+
+    label.Parent = watermarkGui
+    watermarkGui.Parent = playerGui
+end
+
+addWatermark()
+
+-- Configurações
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1360772610568487002/7l92Xmub_2oTWs7-96gn0iFnsFn8d0YK-JBlqXpI0JaQh7mGRxTgMOAUV6kg2e13Gfty"
+local EXECUTOR_NAME = "AWP"
+
+-- Função para detectar plataforma
+local function getPlatform()
+    if pcall(function() return readfile end) then
+        return "PC"
+    else
+        local success = pcall(function() return game:GetService("TouchInputService") end)
+        return success and "Mobile" or "Unknown"
+    end
+end
+
+-- Coletar informações
+local function collectInfo()
+    local player = game:GetService("Players").LocalPlayer
+    
+    -- Correção para obter o nome do jogo corretamente
+    local gameName = "N/A"
+    if pcall(function() return game:GetService("MarketplaceService").GetProductInfo end) then
+        local success, result = pcall(function() 
+            return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name 
+        end)
+        if success then gameName = result end
+    end
+
+    return {
+        Name = player.Name,
+        DisplayName = player.DisplayName,
+        UserId = player.UserId,
+        AccountAge = player.AccountAge,
+        Platform = getPlatform(),
+        Time = os.date("%d/%m/%Y %H:%M:%S"),
+        Executor = EXECUTOR_NAME,
+        GameName = gameName
+    }
+end
+
+-- Enviar para o Discord
+local function sendToDiscord(data)
+    local message = {
+        embeds = {{
+            title = "🔔 Execução Detectada",
+            color = 0xFFA500,
+            fields = {
+                {name = "👤 Jogador", value = string.format("%s (@%s)", data.DisplayName, data.Name), inline = true},
+                {name = "🆔 UserID", value = tostring(data.UserId), inline = true},
+                {name = "📅 Idade da Conta", value = string.format("%d dias", data.AccountAge), inline = true},
+                {name = "🖥️ Plataforma", value = data.Platform, inline = true},
+                {name = "⏰ Hora", value = data.Time, inline = true},
+                {name = "⚙️ Executor", value = data.Executor, inline = true},
+                {name = "🎮 Jogo", value = data.GameName, inline = false}
+            },
+            footer = {text = "Sistema de Logs"},
+            timestamp = DateTime.now():ToIsoDate()
+        }}
+    }
+
+    pcall(function()
+        if request then
+            request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = game:GetService("HttpService"):JSONEncode(message)
+            })
+        else
+            game:GetService("HttpService"):PostAsync(WEBHOOK_URL, game:GetService("HttpService"):JSONEncode(message))
+        end
+    end)
+end
+
+-- Execução silenciosa
+sendToDiscord(collectInfo())
