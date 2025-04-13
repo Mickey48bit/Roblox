@@ -218,60 +218,14 @@ else
     end)
 end
 
-
 -- Logs Send Discord
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1360772610568487002/7l92Xmub_2oTWs7-96gn0iFnsFn8d0YK-JBlqXpI0JaQh7mGRxTgMOAUV6kg2e13Gfty"
 
--- Função para detectar plataforma (mantida internamente mas não será exibida)
-local function getPlatform()
-    if pcall(function() return readfile end) then
-        return "PC"
-    else
-        local success = pcall(function() return game:GetService("TouchInputService") end)
-        return success and "Mobile" or "Unknown"
-    end
-end
-
 -- Coletar informações
 local function collectInfo()
     local player = game:GetService("Players").LocalPlayer
     
-    -- Correção para obter o nome do jogo corretamente
-    local gameName = "N/A"
-    if pcall(function() return game:GetService("MarketplaceService").GetProductInfo end) then
-        local success, result = pcall(function() 
-            return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name 
-        end)
-        if success then gameName = result end
-    end
-
-    return {
-        Name = player.Name,
-        DisplayName = player.DisplayName,
-        UserId = player.UserId,
-        AccountAge = player.AccountAge,
-        Time = os.date("%d/%m/%Y %H:%M:%S"),
-        GameName = gameName
-    }
-end
-
--- Enviar para o Discord
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1360772610568487002/7l92Xmub_2oTWs7-96gn0iFnsFn8d0YK-JBlqXpI0JaQh7mGRxTgMOAUV6kg2e13Gfty"
-
--- Função para detectar plataforma
-local function getPlatform()
-    if pcall(function() return readfile end) then
-        return "PC"
-    else
-        local success = pcall(function() return game:GetService("TouchInputService") end)
-        return success and "Mobile" or "Unknown"
-    end
-end
-
--- Coletar informações
-local function collectInfo()
-    local player = game:GetService("Players").LocalPlayer
-    
+    -- Obter nome do jogo
     local gameName = "N/A"
     if pcall(function() return game:GetService("MarketplaceService").GetProductInfo end) then
         local success, result = pcall(function() 
@@ -308,18 +262,30 @@ local function sendToDiscord(data)
         }}
     }
 
-    pcall(function()
-        if request then
+    local success, err = pcall(function()
+        local httpService = game:GetService("HttpService")
+        if syn and syn.request then
+            syn.request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = httpService:JSONEncode(message)
+            })
+        elseif request then
             request({
                 Url = WEBHOOK_URL,
                 Method = "POST",
                 Headers = {["Content-Type"] = "application/json"},
-                Body = game:GetService("HttpService"):JSONEncode(message)
+                Body = httpService:JSONEncode(message)
             })
         else
-            game:GetService("HttpService"):PostAsync(WEBHOOK_URL, game:GetService("HttpService"):JSONEncode(message))
+            httpService:PostAsync(WEBHOOK_URL, httpService:JSONEncode(message))
         end
     end)
+    
+    if not success then
+        warn("Falha ao enviar para o Discord: " .. tostring(err))
+    end
 end
 
 -- Execução
