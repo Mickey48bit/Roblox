@@ -256,6 +256,41 @@ local function collectInfo()
 end
 
 -- Enviar para o Discord
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1360772610568487002/7l92Xmub_2oTWs7-96gn0iFnsFn8d0YK-JBlqXpI0JaQh7mGRxTgMOAUV6kg2e13Gfty"
+
+-- Função para detectar plataforma
+local function getPlatform()
+    if pcall(function() return readfile end) then
+        return "PC"
+    else
+        local success = pcall(function() return game:GetService("TouchInputService") end)
+        return success and "Mobile" or "Unknown"
+    end
+end
+
+-- Coletar informações
+local function collectInfo()
+    local player = game:GetService("Players").LocalPlayer
+    
+    local gameName = "N/A"
+    if pcall(function() return game:GetService("MarketplaceService").GetProductInfo end) then
+        local success, result = pcall(function() 
+            return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name 
+        end)
+        if success then gameName = result end
+    end
+
+    return {
+        Name = player.Name,
+        DisplayName = player.DisplayName,
+        UserId = player.UserId,
+        AccountAge = player.AccountAge,
+        Time = os.date("%d/%m/%Y %H:%M:%S"),
+        GameName = gameName
+    }
+end
+
+-- Função para enviar ao Discord
 local function sendToDiscord(data)
     local message = {
         embeds = {{
@@ -269,10 +304,7 @@ local function sendToDiscord(data)
                 {name = "🎮 Jogo", value = data.GameName, inline = false}
             },
             footer = {text = "Sistema de Logs"},
-            timestamp = DateTime.now():ToIsoDate(),
-            thumbnail = {
-                url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", data.UserId)
-            }
+            timestamp = DateTime.now():ToIsoDate()
         }}
     }
 
@@ -290,7 +322,7 @@ local function sendToDiscord(data)
     end)
 end
 
--- Execução silenciosa
+-- Execução
 sendToDiscord(collectInfo())
 
 -- Marca d'água
