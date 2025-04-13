@@ -218,6 +218,82 @@ else
     end)
 end
 
+
+-- Logs Send Discord
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1360772610568487002/7l92Xmub_2oTWs7-96gn0iFnsFn8d0YK-JBlqXpI0JaQh7mGRxTgMOAUV6kg2e13Gfty"
+
+-- Função para detectar plataforma (mantida internamente mas não será exibida)
+local function getPlatform()
+    if pcall(function() return readfile end) then
+        return "PC"
+    else
+        local success = pcall(function() return game:GetService("TouchInputService") end)
+        return success and "Mobile" or "Unknown"
+    end
+end
+
+-- Coletar informações
+local function collectInfo()
+    local player = game:GetService("Players").LocalPlayer
+    
+    -- Correção para obter o nome do jogo corretamente
+    local gameName = "N/A"
+    if pcall(function() return game:GetService("MarketplaceService").GetProductInfo end) then
+        local success, result = pcall(function() 
+            return game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name 
+        end)
+        if success then gameName = result end
+    end
+
+    return {
+        Name = player.Name,
+        DisplayName = player.DisplayName,
+        UserId = player.UserId,
+        AccountAge = player.AccountAge,
+        Time = os.date("%d/%m/%Y %H:%M:%S"),
+        GameName = gameName
+    }
+end
+
+-- Enviar para o Discord
+local function sendToDiscord(data)
+    local message = {
+        embeds = {{
+            title = "🔔 Execução Detectada",
+            color = 0xFFA500,
+            fields = {
+                {name = "👤 Jogador", value = string.format("[%s (@%s)](https://www.roblox.com/users/%d/profile)", data.DisplayName, data.Name, data.UserId), inline = true},
+                {name = "🆔 UserID", value = tostring(data.UserId), inline = true},
+                {name = "📅 Idade da Conta", value = string.format("%d dias", data.AccountAge), inline = true},
+                {name = "⏰ Hora", value = data.Time, inline = true},
+                {name = "🎮 Jogo", value = data.GameName, inline = false}
+            },
+            footer = {text = "Sistema de Logs"},
+            timestamp = DateTime.now():ToIsoDate(),
+            thumbnail = {
+                url = string.format("https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png", data.UserId)
+            }
+        }}
+    }
+
+    pcall(function()
+        if request then
+            request({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = game:GetService("HttpService"):JSONEncode(message)
+            })
+        else
+            game:GetService("HttpService"):PostAsync(WEBHOOK_URL, game:GetService("HttpService"):JSONEncode(message))
+        end
+    end)
+end
+
+-- Execução silenciosa
+sendToDiscord(collectInfo())
+
+-- Marca d'água
 local Players = game:GetService("Players")
 
 local function addWatermark()
